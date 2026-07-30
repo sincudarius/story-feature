@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ChangeEvent } from 'react'
-import type { Story } from '../types/story.types'
-import { addStory, createStory, loadStories } from '../services/stories.storage'
+import { useStoriesStore } from '../store/stories.store'
+import { fileToConstrainedBase64 } from '../utils/resize-image'
 import { StoryAvatar } from './story-avatar'
 import { StoryViewer } from './story-viewer'
 
@@ -10,25 +10,64 @@ export default function StoriesStrip() {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    setStories(loadStories())
-  }, [])
+    hydrate()
+  }, [hydrate])
+
+  useEffect(() => {
+    function purge() {
+      removeExpired()
+    }
+
+    const intervalId = window.setInterval(purge, EXPIRY_CHECK_MS)
+
+    function onVisibilityChange() {
+      if (document.visibilityState === 'visible') purge()
+    }
+
+    window.addEventListener('focus', purge)
+    document.addEventListener('visibilitychange', onVisibilityChange)
+
+    return () => {
+      window.clearInterval(intervalId)
+      window.removeEventListener('focus', purge)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+    }
+  }, [removeExpired])
+
+  useEffect(() => {
+    if (viewerIndex === null) return
+    if (stories.length === 0) {
+      setViewerIndex(null)
+      return
+    }
+    if (viewerIndex >= stories.length) {
+      setViewerIndex(stories.length - 1)
+    }
+  }, [stories, viewerIndex])
 
   function handleAddClick() {
+    setUploadError(null)
     fileInputRef.current?.click()
   }
 
-  function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
+  async function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
     event.target.value = ''
     if (!file) return
 
-    const reader = new FileReader()
-    reader.onload = () => {
-      if (typeof reader.result !== 'string') return
-      const story = createStory(reader.result)
-      setStories(addStory(story))
+    setUploadError(null)
+    setIsUploading(true)
+
+    try {
+      const imageBase64 = await fileToConstrainedBase64(file)
+      add(imageBase64)
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Could not upload image'
+      setUploadError(message)
+    } finally {
+      setIsUploading(false)
     }
-    reader.readAsDataURL(file)
   }
 
   return (
