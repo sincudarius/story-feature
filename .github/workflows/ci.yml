@@ -3,13 +3,27 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, develop]
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  branch-name:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check branch name
+        run: |
+          BRANCH="${{ github.head_ref }}"
+          echo "Branch: $BRANCH"
+          PATTERN='^(feat|fix|chore|refactor|docs|test)/STORY-[0-9]+/[a-z0-9]+(-[a-z0-9]+)*$'
+          if [[ ! "$BRANCH" =~ $PATTERN ]]; then
+            echo "::error::Branch must look like feat/STORY-3/stories-strip (type/STORY-<n>/kebab-slug)"
+            exit 1
+          fi
+
   check:
     runs-on: ubuntu-latest
     steps:
