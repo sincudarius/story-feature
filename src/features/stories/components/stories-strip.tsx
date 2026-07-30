@@ -4,17 +4,9 @@ import { fileToConstrainedBase64 } from '../utils/resize-image'
 import { StoryAvatar } from './story-avatar'
 import { StoryViewer } from './story-viewer'
 
-const EXPIRY_CHECK_MS = 60_000
-
 export default function StoriesStrip() {
-  const stories = useStoriesStore((state) => state.stories)
-  const hydrate = useStoriesStore((state) => state.hydrate)
-  const add = useStoriesStore((state) => state.add)
-  const removeExpired = useStoriesStore((state) => state.removeExpired)
-
+  const [stories, setStories] = useState<Story[]>([])
   const [viewerIndex, setViewerIndex] = useState<number | null>(null)
-  const [uploadError, setUploadError] = useState<string | null>(null)
-  const [isUploading, setIsUploading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -85,11 +77,10 @@ export default function StoriesStrip() {
           <button
             type="button"
             onClick={handleAddClick}
-            disabled={isUploading}
             aria-label="Add story"
-            className="flex size-16 shrink-0 items-center justify-center rounded-full border-2 border-dashed border-slate-500 text-2xl text-slate-300 transition hover:border-slate-300 hover:text-white disabled:cursor-wait disabled:opacity-50"
+            className="flex size-16 shrink-0 items-center justify-center rounded-full border-2 border-dashed border-slate-500 text-2xl text-slate-300 transition hover:border-slate-300 hover:text-white"
           >
-            {isUploading ? '…' : '+'}
+            +
           </button>
 
           <input
@@ -112,12 +103,6 @@ export default function StoriesStrip() {
             ))
           )}
         </div>
-
-        {uploadError ? (
-          <p className="px-4 pb-3 text-sm text-red-400" role="alert">
-            {uploadError}
-          </p>
-        ) : null}
       </div>
 
       {viewerIndex !== null && stories.length > 0 ? (
