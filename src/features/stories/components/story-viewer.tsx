@@ -1,6 +1,8 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, type PointerEvent as ReactPointerEvent } from 'react'
 import type { Story } from '../types/story.types'
 import { useStoryViewer } from '../hooks/use-story-viewer'
+
+const SWIPE_THRESHOLD_PX = 50
 
 type StoryViewerProps = Readonly<{
   stories: Story[]
@@ -24,6 +26,7 @@ export function StoryViewer({ stories, initialIndex, onClose }: StoryViewerProps
   const goNextRef = useRef(goNext)
   const goPreviousRef = useRef(goPrevious)
   const closeRef = useRef(close)
+  const pointerStartX = useRef<number | null>(null)
   goNextRef.current = goNext
   goPreviousRef.current = goPrevious
   closeRef.current = close
@@ -47,16 +50,46 @@ export function StoryViewer({ stories, initialIndex, onClose }: StoryViewerProps
     }
   }, [])
 
+  function handlePointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    if (event.button !== 0) return
+    pointerStartX.current = event.clientX
+  }
+
+  function handlePointerUp(event: ReactPointerEvent<HTMLDivElement>) {
+    if (pointerStartX.current === null) return
+
+    const deltaX = event.clientX - pointerStartX.current
+    pointerStartX.current = null
+
+    if (Math.abs(deltaX) >= SWIPE_THRESHOLD_PX) {
+      if (deltaX < 0) goNext()
+      else goPrevious()
+      return
+    }
+
+    const bounds = event.currentTarget.getBoundingClientRect()
+    const relativeX = event.clientX - bounds.left
+    if (relativeX < bounds.width / 3) goPrevious()
+    else goNext()
+  }
+
+  function handlePointerCancel() {
+    pointerStartX.current = null
+  }
+
   if (!story) return null
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black"
+      className="fixed inset-0 z-50 flex touch-pan-y items-center justify-center bg-black"
       role="dialog"
       aria-modal="true"
       aria-label="Story viewer"
+      onPointerDown={handlePointerDown}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerCancel}
     >
-      <div className="absolute inset-x-0 top-0 z-20 flex gap-1 px-3 pt-3">
+      <div className="absolute inset-x-0 top-0 z-20 flex gap-1 px-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
         {stories.map((item, index) => (
           <div
             key={item.id}
@@ -72,9 +105,14 @@ export function StoryViewer({ stories, initialIndex, onClose }: StoryViewerProps
 
       <button
         type="button"
-        onClick={close}
+        onClick={(event) => {
+          event.stopPropagation()
+          close()
+        }}
+        onPointerDown={(event) => event.stopPropagation()}
+        onPointerUp={(event) => event.stopPropagation()}
         aria-label="Close story"
-        className="absolute top-5 right-4 z-20 rounded-full bg-black/40 px-3 py-1 text-sm text-white backdrop-blur-sm hover:bg-black/60"
+        className="absolute top-[max(1.25rem,env(safe-area-inset-top))] right-[max(1rem,env(safe-area-inset-right))] z-20 rounded-full bg-black/40 px-3 py-1 text-sm text-white backdrop-blur-sm hover:bg-black/60"
       >
         ✕
       </button>
@@ -82,20 +120,8 @@ export function StoryViewer({ stories, initialIndex, onClose }: StoryViewerProps
       <img
         src={story.imageBase64}
         alt="Story"
-        className="max-h-full max-w-full object-contain"
-      />
-
-      <button
-        type="button"
-        aria-label="Previous story"
-        onClick={goPrevious}
-        className="absolute inset-y-0 left-0 z-10 w-1/3 cursor-pointer bg-transparent"
-      />
-      <button
-        type="button"
-        aria-label="Next story"
-        onClick={goNext}
-        className="absolute inset-y-0 right-0 z-10 w-2/3 cursor-pointer bg-transparent"
+        draggable={false}
+        className="max-h-full max-w-full select-none object-contain"
       />
     </div>
   )

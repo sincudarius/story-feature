@@ -1,34 +1,81 @@
 import { useEffect, useRef, useState, type ChangeEvent } from 'react'
-import type { Story } from '../types/story.types'
-import { addStory, createStory, loadStories } from '../services/stories.storage'
+import { useStoriesStore } from '../store/stories.store'
+import { fileToConstrainedBase64 } from '../utils/resize-image'
 import { StoryAvatar } from './story-avatar'
 import { StoryViewer } from './story-viewer'
 
+const EXPIRY_CHECK_MS = 60_000
+
 export default function StoriesStrip() {
-  const [stories, setStories] = useState<Story[]>([])
+  const stories = useStoriesStore((state) => state.stories)
+  const hydrate = useStoriesStore((state) => state.hydrate)
+  const add = useStoriesStore((state) => state.add)
+  const removeExpired = useStoriesStore((state) => state.removeExpired)
+
   const [viewerIndex, setViewerIndex] = useState<number | null>(null)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+  const [isUploading, setIsUploading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    setStories(loadStories())
-  }, [])
+    hydrate()
+  }, [hydrate])
+
+  useEffect(() => {
+    function purge() {
+      removeExpired()
+    }
+
+    const intervalId = window.setInterval(purge, EXPIRY_CHECK_MS)
+
+    function onVisibilityChange() {
+      if (document.visibilityState === 'visible') purge()
+    }
+
+    window.addEventListener('focus', purge)
+    document.addEventListener('visibilitychange', onVisibilityChange)
+
+    return () => {
+      window.clearInterval(intervalId)
+      window.removeEventListener('focus', purge)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+    }
+  }, [removeExpired])
+
+  useEffect(() => {
+    if (viewerIndex === null) return
+    if (stories.length === 0) {
+      setViewerIndex(null)
+      return
+    }
+    if (viewerIndex >= stories.length) {
+      setViewerIndex(stories.length - 1)
+    }
+  }, [stories, viewerIndex])
 
   function handleAddClick() {
+    setUploadError(null)
     fileInputRef.current?.click()
   }
 
-  function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
+  async function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
     event.target.value = ''
     if (!file) return
 
-    const reader = new FileReader()
-    reader.onload = () => {
-      if (typeof reader.result !== 'string') return
-      const story = createStory(reader.result)
-      setStories(addStory(story))
+    setUploadError(null)
+    setIsUploading(true)
+
+    try {
+      const imageBase64 = await fileToConstrainedBase64(file)
+      add(imageBase64)
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Could not upload image'
+      setUploadError(message)
+    } finally {
+      setIsUploading(false)
     }
-    reader.readAsDataURL(file)
   }
 
   return (
@@ -38,10 +85,11 @@ export default function StoriesStrip() {
           <button
             type="button"
             onClick={handleAddClick}
+            disabled={isUploading}
             aria-label="Add story"
-            className="flex size-16 shrink-0 items-center justify-center rounded-full border-2 border-dashed border-slate-500 text-2xl text-slate-300 transition hover:border-slate-300 hover:text-white"
+            className="flex size-16 shrink-0 items-center justify-center rounded-full border-2 border-dashed border-slate-500 text-2xl text-slate-300 transition hover:border-slate-300 hover:text-white disabled:cursor-wait disabled:opacity-50"
           >
-            +
+            {isUploading ? '…' : '+'}
           </button>
 
           <input
@@ -64,6 +112,12 @@ export default function StoriesStrip() {
             ))
           )}
         </div>
+
+        {uploadError ? (
+          <p className="px-4 pb-3 text-sm text-red-400" role="alert">
+            {uploadError}
+          </p>
+        ) : null}
       </div>
 
       {viewerIndex !== null && stories.length > 0 ? (
